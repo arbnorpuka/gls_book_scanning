@@ -1284,8 +1284,15 @@ class Solver:
             return best_score, current_solution
 
 
-    def guided_local_search(self, data, max_time=300, max_iterations=1000):
-        """Updated guided local search using lightweight operators and avoiding deep copies."""
+    def guided_local_search(self, data, max_time=600, max_iterations=10000):
+        """
+        Guided Local Search using lightweight operators and avoiding deep copies
+        
+        Args:
+            data: The problem data
+            max_time: Maximum time in seconds (default: 600s = 10 minutes)
+            max_iterations: Maximum number of iterations
+        """
         C = set(range(len(data.libs)))
         T = list(range(5, 16, 5))
         p = [0] * len(data.libs)
@@ -1319,6 +1326,9 @@ class Solver:
             (self.tweak_solution_swap_neighbor_libraries_light, "swap_neighbors")
         ]
         
+        # Initialize operator statistics
+        operator_stats = {op_name: {"success": 0, "total": 0, "weight": 1.0} for _, op_name in operators}
+        
         while time.time() - start_time < max_time and iteration_count < max_iterations:
             iteration_count += 1
             
@@ -1345,14 +1355,23 @@ class Solver:
                         }
                         selected_component = max(adjusted_utilities.items(), key=lambda x: x[1])[0]
                         
-                        # Choose operator randomly
-                        operator, op_name = random.choice(operators)
+                        # Choose operator based on weights
+                        weights = [operator_stats[op_name]["weight"] for _, op_name in operators]
+                        operator, op_name = random.choices(operators, weights=weights, k=1)[0]
                         
                         # Apply operator and get delta score
                         if op_name == "insert_library":
                             R, delta = operator(S, data, target_lib=selected_component)
                         else:
                             R, delta = operator(S, data)
+                        
+                        # Update operator statistics
+                        operator_stats[op_name]["total"] += 1
+                        if delta > 0:
+                            operator_stats[op_name]["success"] += 1
+                            # Update weight based on success rate
+                            success_rate = operator_stats[op_name]["success"] / operator_stats[op_name]["total"]
+                            operator_stats[op_name]["weight"] = 1.0 + success_rate
                         
                         # Update R's fitness score using delta
                         R.fitness_score = S.fitness_score + delta
